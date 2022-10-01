@@ -1,0 +1,1 @@
+# stop_term_resources_lambda
