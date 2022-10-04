@@ -13,7 +13,7 @@
                 "logs:PutLogEvents"
             ],
             "Resource": [
-                "arn:aws:logs:*:*:log-group:/aws/lambda/AMS-DemoAdmin-Check-Stop-Terminate:*"
+                "arn:aws:logs:*:*:log-group:/aws/lambda/AMS-DemoAdmin-Shutdown-Resources:*"
             ]
         },
         {
