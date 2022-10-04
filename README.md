@@ -17,6 +17,8 @@ Create a lambda IAM Role (ex: AMS-DemoAdmin-Shutdown-Resources-Lambda-Role ) wit
 
 3. Perform "Test" run with any/default JSON input. **Note**: Update the code by changing the **Days_** variables to very high value to test w/o actual action.
 
+4. Ensure the Timeout value for Lambda function is changed to a reasonable value (say 15 mins) from the default 3 seconds.
+
 ## Once test is successful, setup regular run
 
 1. Follow steps [outlined here](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-create-rule-schedule.html) to run above created Lambda function on daily basis or desired interval, using Amazon EventBridge
