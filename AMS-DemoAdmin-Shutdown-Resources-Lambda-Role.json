@@ -1,0 +1,33 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": "logs:CreateLogGroup",
+            "Resource": "arn:aws:logs:*:*:*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+            ],
+            "Resource": [
+                "arn:aws:logs:*:*:log-group:/aws/lambda/AMS-DemoAdmin-Check-Stop-Terminate:*"
+            ]
+        },
+        {
+            "Sid": "StopDeleteResources",
+            "Effect": "Allow",
+            "Action": [
+                "ec2:Describe*",
+                "ec2:Delete*",
+                "ec2:Terminate*",
+                "rds:Describe*",
+                "rds:Delete*",
+                "rds:Stop*"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
