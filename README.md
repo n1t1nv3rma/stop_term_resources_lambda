@@ -3,7 +3,7 @@ Use below steps to setup auto shutdown and termination of EC2 and RDS instance b
 
 ## Create IAM Role for Lambda
 
-Create a lambda IAM Role (ex: AMS-DemoAdmin-Shutdown-Resources-Lambda-Role ) with below policies
+Create a lambda IAM Role (ex: AMS-DemoAdmin-Shutdown-Resources-Lambda-Role ) with below policies (and Trust with Lambda service)
 
 1. AWS Managed "ReadOnlyAccess" policy
 2. Customer managed policy (ex: AMS-DemoAdmin-Shutdown-Resources-Lambda-Policy) as per the permissions in "AMS-DemoAdmin-Shutdown-Resources-Lambda-Role.json"
