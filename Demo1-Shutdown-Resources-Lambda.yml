@@ -1,0 +1,250 @@
+Description: AMS-DemoAdmin-Shutdown-Resources-Lambda
+Resources:
+  LambdaPolicy:
+    Type: "AWS::IAM::ManagedPolicy"
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - "logs:CreateLogGroup"
+            Resource: "arn:aws:logs:*:*:*"
+          - Effect: Allow
+            Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource: "arn:aws:logs:*:*:log-group:/aws/lambda/AMS-DemoAdmin-Shutdown-Resources:*"
+          - Effect: Allow
+            Action:
+              - "ec2:Describe*"
+              - "ec2:Delete*"
+              - "ec2:Terminate*"
+              - "rds:Describe*"
+              - "rds:Delete*"
+              - "rds:Stop*"
+            Resource: "*"
+      ManagedPolicyName: AMS-DemoAdmin-Shutdown-Resources-Lambda-Policy
+  LambdaExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      RoleName: AMS-DemoAdmin-Shutdown-Resources-Lambda-Role
+      ManagedPolicyArns:
+        - !Ref LambdaPolicy
+        - "arn:aws:iam::aws:policy/ReadOnlyAccess"
+  LambdaFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      FunctionName: AMS-DemoAdmin-Shutdown-Resources
+      Runtime: python3.9
+      Code:
+        ZipFile: |
+          import boto3
+          import logging
+          from datetime import *
+          from botocore.exceptions import ClientError
+          ec2 = boto3.client('ec2')
+          rds = boto3.client('rds')
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          # Use this as Lambda Function check and take action as per following Rules.
+          #
+          # Rules:
+          # 1. If “Owner” tag is NOT setup and the resource will be Shut down after 7 days and Terminated after 14 days.
+          # 2. If “Owner” tag is setup and the resource will be Shut down after 7 days and Terminated after 30 days.
+          #
+          TAG_KEY = "Owner"
+          Date_Today = date.today()
+          Shutdown = False
+          Terminate = False
+          Days_Shutdown=7
+          Days_Terminate_Without_Tag=14
+          Days_Terminate_With_Tag=30
+
+          # Terminate EC2
+          def term_ec2 (inst_id, inst_name):
+              print ("Terminating EC2 now: " + inst_id + " (" + inst_name + ")")
+              try:
+                  ec2.terminate_instances(
+                      InstanceIds=[inst_id]
+                  )
+                  logger.info("SUCCESS: Terminated " + inst_id + " (" + inst_name + ")")
+              except ClientError as err:
+                  logger.warning('Error encountered while terminating instance: {}. ' 'Error details: {}'.format(inst_id, err))
+
+          # Stop EC2
+          def stop_ec2 (inst_id, inst_name):
+              print ("Shutting EC2 now: " + inst_id + " (" + inst_name + ")")
+              try:
+                  ec2.stop_instances(
+                      InstanceIds = [inst_id],
+                      Force=True
+                  )
+                  logger.info("SUCCESS: Stopped " + inst_id + " (" + inst_name + ")")
+              except ClientError as err:
+                  logger.warning('Error encountered while stopping instance: {}. ' 'Error details: {}'.format(inst_id, err))
+
+          # Terminate RDS
+          def term_rds (inst_id, inst_name):
+              print ("Terminating RDS now: " + inst_id + " (" + inst_name + ")")
+              try:
+                  rds.delete_db_instance(
+                      DBInstanceIdentifier = inst_name,
+                      SkipFinalSnapshot = True,
+                      DeleteAutomatedBackups = True
+                  )
+                  logger.info("SUCCESS: Terminated " + inst_id + " (" + inst_name + ")")
+              except ClientError as err:
+                  logger.warning('Error encountered while terminating instance: {}. ' 'Error details: {}'.format(inst_id, err))
+
+          # Stop RDS
+          def stop_rds (inst_id, inst_name):
+              print ("Shutting RDS now: " + inst_id + " (" + inst_name + ")")
+              try:
+                  rds.stop_db_instance(
+                      DBInstanceIdentifier = inst_name
+                  )
+                  logger.info("SUCCESS: Stopped " + inst_id + " (" + inst_name + ")")
+              except ClientError as err:
+                  logger.warning('Error encountered while stopping instance: {}. ' 'Error details: {}'.format(inst_id, err))
+
+
+
+          # Check EC2 instances and take action
+          def check_ec2_tags():
+              response = ec2.describe_instances()
+              reservations = response['Reservations']
+              for reservation in reservations:
+                  for ins in reservation['Instances']:
+                      tagKey_Exists = False
+                      # Debug: logger.info("working on " + ins['InstanceId'] + "...")
+                      tags = []
+                      instance_name = ""
+                      instance_id = ins['InstanceId']
+                      
+                      # Ensure at least a Tag is set to avoid Key error.
+                      if 'Tags' in ins:
+                          tags = ins['Tags']
+                      
+                      # Dont run if no tag found
+                      if tags:
+                          for tag in tags:
+                              if tag['Key'] == 'Name' :
+                                  instance_name = tag['Value']
+                                  break
+
+                          # Check if desired tag is set
+                          for tag in tags:
+                              if tag['Key'] == TAG_KEY :
+                                  #print("\tNOTE: For " + instance_id + " the Key " + TAG_KEY + " Exists...")
+                                  tagKey_Exists = True
+
+                      print("Checking " + instance_id + " (" + instance_name + ")..." )
+                      # Check for how long the resource is running
+                      LaunchTime = ins['LaunchTime']
+                      LT_Date = LaunchTime.date()
+                      Running_For = (Date_Today-LT_Date).days
+                      #print ("Running for:" + str(Running_For))
+                      msg_str = instance_id + " (" + instance_name + ")..."
+
+                      if tagKey_Exists:
+                          if Running_For > Days_Terminate_With_Tag :
+                              logger.info("Running for " +  str(Running_For) + " days WITH required tag. Terminating the " + msg_str)
+                              term_ec2 (instance_id, instance_name)
+                          elif Running_For > Days_Shutdown :
+                              logger.info("Running for " +  str(Running_For) + " days WITH required tag. Shutting down " + msg_str)
+                              stop_ec2 (instance_id, instance_name)
+                          else :
+                              logger.info("Running for " +  str(Running_For) + " days WITH required tag. No action for  " + msg_str)
+                      else:
+                          if Running_For > Days_Terminate_Without_Tag :
+                              logger.info("Running for " +  str(Running_For) + " days WITHOUT required tag. Terminating the " + msg_str)
+                              term_ec2 (instance_id, instance_name)
+                          elif Running_For > Days_Shutdown :
+                              logger.info("Running for " +  str(Running_For) + " days WITHOUT required tag. Shutting down " + msg_str)
+                              stop_ec2 (instance_id, instance_name)
+                          else :
+                              logger.info("Running for " +  str(Running_For) + " days WITHOUT required tag. No action for  " + msg_str)
+
+
+          # Check RDS instances and take action
+          def check_rds_tags():
+              response = rds.describe_db_instances()
+              instances = response['DBInstances']
+
+              for ins in instances:
+                  tagKey_Exists = False
+                  DB_Name = ins['DBInstanceIdentifier']
+                  DB_Arn = ins['DBInstanceArn']
+                  print("Working on RDS Instance:  " + DB_Arn + " (" + DB_Name + ")...")
+                  All_Tags = ins['TagList']
+                  for tag in All_Tags:
+                      if tag['Key'] == TAG_KEY :
+                          print("\tNOTE: For " + DB_Arn + " the Key " + TAG_KEY + " Exists...")
+                          tagKey_Exists = True
+                  
+                  # Check for how long the resource is running
+                  LaunchTime = ins['InstanceCreateTime']
+                  LT_Date = LaunchTime.date()
+                  Running_For = (Date_Today-LT_Date).days
+                  #print ("Running for:" + str(Running_For))
+                  msg_str = DB_Arn + " (" + DB_Name + ")..."
+
+                  if tagKey_Exists:
+                      if Running_For > Days_Terminate_With_Tag :
+                          logger.info("Running for " +  str(Running_For) + " days WITH required tag. Terminating the " + msg_str)
+                          term_rds (DB_Arn, DB_Name)
+                      elif Running_For > Days_Shutdown :
+                          logger.info("Running for " +  str(Running_For) + " days WITH required tag. Shutting down " + msg_str)
+                          stop_rds (DB_Arn, DB_Name)
+                      else :
+                          logger.info("Running for " +  str(Running_For) + " days WITH required tag. No action for  " + msg_str)
+                  else:
+                      if Running_For > Days_Terminate_Without_Tag :
+                          logger.info("Running for " +  str(Running_For) + " days WITHOUT required tag. Terminating the " + msg_str)
+                          term_rds (DB_Arn, DB_Name)
+                      elif Running_For > Days_Shutdown :
+                          logger.info("Running for " +  str(Running_For) + " days WITHOUT required tag. Shutting down " + msg_str)
+                          stop_rds (DB_Arn, DB_Name)
+                      else :
+                          logger.info("Running for " +  str(Running_For) + " days WITHOUT required tag. No action for  " + msg_str)
+
+          # Main
+          def lambda_handler(event, context):
+              logger.info("Look for Tag Key: " + TAG_KEY + " and taking action according to the rules...")
+              try:
+                  print("======== Check & Shutdown EC2 ===========================")
+                  check_ec2_tags()
+                  print("======== Check & Shutdown RDS ===========================")
+                  check_rds_tags()          
+              except Exception as e:
+                  logging.error("+++ MAJOR ERROR: Please Investigate +++")
+                  logging.error(getattr(e, 'message', repr(e)))
+  EventsRule:
+    Type: AWS::Events::Rule
+    Properties: 
+      Name: AMS-DemoAdmin-Shutdown-Resources
+      ScheduleExpression: rate(1 day)
+      Targets: 
+        - Arn: !GetAtt 
+          - LambdaFunction
+          - Arn
+          Id: Id1
+  InvokeLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt EventsRule.Arn
