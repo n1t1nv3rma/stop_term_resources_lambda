@@ -1,5 +1,7 @@
+# Intro
+This tool provide a simple mechanism to reduce ongoing operational cost drastically by creating a function to shutdown and/or termination of the unwanted AWS EC2 and Amazon RDS instances, on regular interval, based upon desired "Tags" and "no. of days". This can be really helpful in non-prod environments (like Demo/Test) to reduce ongoing operational cost drastically.
+
 # Steps
-Use below steps to setup an automated shutdown and/or termination of the unwanted AWS EC2 and Amazon RDS instances based upon no. of **days** and **tag**, using Amazon EventBridge and AWS Lambda. This can be really helpful in non-prod environments (like Demo/Test) to reduce ongoing operational cost drastically. 
 
 # Option-1:
 ## Use AWS CloudFormation
@@ -26,3 +28,6 @@ Create a lambda IAM Role with below policies and setup the role Trust with AWS L
 # Testing
 1. Perform "Test" run with any/default JSON input. **Note**: Update the code by changing the **Days_** variables to a very high value (ex: 99999) to test w/o actual action.
 2. Ensure the Timeout value for Lambda function is changed to a reasonable value (say 15 mins) from the default 3 seconds.
+
+# Pro Tip
+* One can deploy this function using [AWS CFN Stackset](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/what-is-cfnstacksets.html) to auto deploy this function centrally across all AWS accounts in an AWS Organisation Unit (Ex: Dev/Test OU).
